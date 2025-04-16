@@ -9,6 +9,7 @@ const OktoWallet = ({ setWallet = () => {} }) => {
   const [walletAddress, setWalletAddress] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Create a direct reference to the oktoClient for transaction signing
   const signTransaction = async (transaction) => {
@@ -30,32 +31,96 @@ const OktoWallet = ({ setWallet = () => {} }) => {
   useEffect(() => {
     const checkWalletConnection = async () => {
       try {
-        // Only proceed if oktoClient is available and has userSWA property
-        if (oktoClient && oktoClient.userSWA) {
-          setWalletAddress(oktoClient.userSWA);
-          
-          // Create wallet object
-          const walletObj = {
-            address: oktoClient.userSWA,
-            signTransaction: signTransaction
-          };
-          
-          // Set wallet state in parent component if setWallet is provided
-          setWallet(walletObj);
-          
-          // Store wallet in localStorage for persistence - only store the minimum required info
-          window.localStorage.setItem('scbpWallet', JSON.stringify({
-            address: oktoClient.userSWA
-          }));
-          
-          // Use minimal logging in production
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('Wallet connected');
+        // Only proceed if oktoClient is available
+        if (oktoClient) {
+          // Check if we have a stored wallet address
+          const storedWallet = window.localStorage.getItem('scbpWallet');
+          if (storedWallet) {
+            try {
+              const parsedWallet = JSON.parse(storedWallet);
+              if (parsedWallet.address) {
+                setWalletAddress(parsedWallet.address);
+                
+                // Create wallet object
+                const walletObj = {
+                  address: parsedWallet.address,
+                  signTransaction: signTransaction
+                };
+                
+                // Set wallet state in parent component if setWallet is provided
+                setWallet(walletObj);
+                
+                // If we're on the login page and already connected, redirect to dashboard
+                if (window.location.pathname === '/login') {
+                  navigate('/dashboard');
+                }
+                
+                return; // Exit early if we have a stored wallet
+              }
+            } catch (e) {
+              // Invalid stored wallet, continue with normal flow
+              window.localStorage.removeItem('scbpWallet');
+            }
           }
           
-          // If we're on the login page and already connected, redirect to dashboard
-          if (window.location.pathname === '/login') {
-            navigate('/dashboard');
+          // Try to get user keys with retry mechanism
+          if (typeof oktoClient.getUserKeys === 'function') {
+            try {
+              const userKeys = await oktoClient.getUserKeys();
+              
+              if (userKeys && userKeys.userSWA) {
+                setWalletAddress(userKeys.userSWA);
+                
+                // Create wallet object
+                const walletObj = {
+                  address: userKeys.userSWA,
+                  signTransaction: signTransaction
+                };
+                
+                // Set wallet state in parent component if setWallet is provided
+                setWallet(walletObj);
+                
+                // Store wallet in localStorage for persistence - only store the minimum required info
+                window.localStorage.setItem('scbpWallet', JSON.stringify({
+                  address: userKeys.userSWA
+                }));
+                
+                // If we're on the login page and already connected, redirect to dashboard
+                if (window.location.pathname === '/login') {
+                  navigate('/dashboard');
+                }
+              }
+            } catch (error) {
+              console.warn('Error getting user keys:', error);
+              // Don't set error state here, just log it
+            }
+          } else if (oktoClient.userSWA) {
+            // Fallback to direct property access
+            setWalletAddress(oktoClient.userSWA);
+            
+            // Create wallet object
+            const walletObj = {
+              address: oktoClient.userSWA,
+              signTransaction: signTransaction
+            };
+            
+            // Set wallet state in parent component if setWallet is provided
+            setWallet(walletObj);
+            
+            // Store wallet in localStorage for persistence - only store the minimum required info
+            window.localStorage.setItem('scbpWallet', JSON.stringify({
+              address: oktoClient.userSWA
+            }));
+            
+            // If we're on the login page and already connected, redirect to dashboard
+            if (window.location.pathname === '/login') {
+              navigate('/dashboard');
+            }
+          } else if (retryCount < 3) {
+            // Retry a few times if the client isn't fully initialized
+            setTimeout(() => {
+              setRetryCount(prev => prev + 1);
+            }, 1000);
           }
         }
       } catch (error) {
@@ -64,7 +129,7 @@ const OktoWallet = ({ setWallet = () => {} }) => {
     };
 
     checkWalletConnection();
-  }, [oktoClient, navigate]);
+  }, [oktoClient, navigate, retryCount]);
 
   const handleGoogleLogin = async (credentialResponse) => {
     setIsLoading(true);
@@ -77,13 +142,34 @@ const OktoWallet = ({ setWallet = () => {} }) => {
       });
       
       // Wait a moment for the client to update
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Get user info from Okto client
-      const userKeys = await oktoClient.getUserKeys();
+      // Get user info from Okto client with retry mechanism
+      let userKeys = null;
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (!userKeys && retries < maxRetries) {
+        try {
+          if (typeof oktoClient.getUserKeys === 'function') {
+            userKeys = await oktoClient.getUserKeys();
+          } else if (oktoClient.userSWA) {
+            // Fallback to direct property access
+            userKeys = { userSWA: oktoClient.userSWA };
+          } else {
+            throw new Error('getUserKeys not available');
+          }
+        } catch (e) {
+          console.warn(`Retry ${retries + 1}/${maxRetries} failed:`, e);
+          retries++;
+          if (retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
       
       if (!userKeys || !userKeys.userSWA) {
-        throw new Error('Failed to retrieve wallet address');
+        throw new Error('Failed to retrieve wallet address after multiple attempts');
       }
       
       const address = userKeys.userSWA;
@@ -102,11 +188,6 @@ const OktoWallet = ({ setWallet = () => {} }) => {
       window.localStorage.setItem('scbpWallet', JSON.stringify({
         address: address
       }));
-      
-      // Use minimal logging in production
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Wallet connected');
-      }
       
       // Redirect to dashboard after successful login
       navigate('/dashboard');
