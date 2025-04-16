@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.glow-card {
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+}
+
+.magnetic-button {
+  transition: transform 0.2s ease;
+}
+
+.magnetic-button:hover {
+  transform: translateY(-2px);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
