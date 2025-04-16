@@ -43,12 +43,15 @@ const OktoWallet = ({ setWallet = () => {} }) => {
           // Set wallet state in parent component if setWallet is provided
           setWallet(walletObj);
           
-          // Store wallet in localStorage for persistence
+          // Store wallet in localStorage for persistence - only store the minimum required info
           window.localStorage.setItem('scbpWallet', JSON.stringify({
             address: oktoClient.userSWA
           }));
           
-          console.log('Already connected to Okto wallet:', oktoClient.userSWA);
+          // Use minimal logging in production
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('Wallet connected');
+          }
           
           // If we're on the login page and already connected, redirect to dashboard
           if (window.location.pathname === '/login') {
@@ -95,12 +98,15 @@ const OktoWallet = ({ setWallet = () => {} }) => {
       // Set wallet state in parent component
       setWallet(walletObj);
       
-      // Store wallet in localStorage for persistence
+      // Store wallet in localStorage for persistence - only store the minimum required info
       window.localStorage.setItem('scbpWallet', JSON.stringify({
         address: address
       }));
       
-      console.log('Connected to Okto wallet:', address);
+      // Use minimal logging in production
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Wallet connected');
+      }
       
       // Redirect to dashboard after successful login
       navigate('/dashboard');

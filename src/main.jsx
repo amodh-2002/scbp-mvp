@@ -4,6 +4,14 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { OktoProvider } from '@okto_web3/react-sdk';
 import App from './App.jsx';
 import './index.css';
+import { setupLogSuppression } from './utils/logSuppressor';
+import { blockOktoLogs } from './utils/oktoLogBlocker';
+
+// Suppress sensitive logs in all environments
+setupLogSuppression();
+
+// Specifically block Okto SDK logs
+blockOktoLogs();
 
 const oktoConfig = {
   environment: 'sandbox',

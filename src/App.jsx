@@ -14,7 +14,10 @@ function App() {
       try {
         const parsedWallet = JSON.parse(savedWallet);
         setWallet(parsedWallet);
-        console.log('Loaded wallet from localStorage:', parsedWallet.address);
+        // Only log minimal information in development
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Wallet loaded from storage');
+        }
       } catch (error) {
         console.error('Error parsing saved wallet:', error);
         window.localStorage.removeItem('scbpWallet');
